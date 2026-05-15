@@ -1,0 +1,2 @@
+"""XAU trading platform backend."""
+
