@@ -1,6 +1,7 @@
+from datetime import datetime
 import unittest
 
-from app.services.data_loader import get_candles, normalize_timeframe, parse_datetime
+from app.services.data_loader import get_candles, normalize_timeframe, parse_datetime, shift_candles_to_now
 
 
 class DataLoaderTests(unittest.TestCase):
@@ -19,6 +20,12 @@ class DataLoaderTests(unittest.TestCase):
         self.assertEqual(len(rows), 5)
         self.assertEqual(rows, sorted(rows, key=lambda row: row.dt))
         self.assertEqual(rows[-1].close, 4889.48)
+
+    def test_shift_candles_to_now_aligns_last_candle(self):
+        rows = get_candles("XAU", "15m", limit=2)
+        shifted = shift_candles_to_now(rows, "15m", now=datetime(2026, 5, 15, 10, 47))
+        self.assertEqual(shifted[-1].dt.isoformat(timespec="minutes"), "2026-05-15T10:45")
+        self.assertEqual(shifted[-1].close, rows[-1].close)
 
 
 if __name__ == "__main__":

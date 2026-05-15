@@ -11,7 +11,14 @@ import {
   TrendingUp,
   Waves,
 } from "lucide-react";
-import { fetchCandles, fetchIndicators, predictSetup, replayUrl } from "./api.js";
+import {
+  fetchCandles,
+  fetchIndicators,
+  fetchModelStatus,
+  fetchSetupSuggestions,
+  predictSetup,
+  replayUrl,
+} from "./api.js";
 
 const TIMEFRAMES = ["5m", "15m", "30m", "1h", "4h", "1d"];
 const SYMBOLS = ["XAU"];
@@ -55,6 +62,9 @@ export default function App() {
   const [indicators, setIndicators] = useState({ emas: {}, rsi: [], zones: [], latest: {} });
   const [setup, setSetup] = useState(defaultSetup(null));
   const [prediction, setPrediction] = useState(null);
+  const [modelStatus, setModelStatus] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggesting, setSuggesting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -83,13 +93,15 @@ export default function App() {
     setLoading(true);
     setError("");
     try {
+      const realtime = mode === "live";
       const [nextCandles, nextIndicators] = await Promise.all([
-        fetchCandles({ symbol, timeframe, limit: 700 }),
-        fetchIndicators({ symbol, timeframe, limit: 700 }),
+        fetchCandles({ symbol, timeframe, limit: 700, realtime }),
+        fetchIndicators({ symbol, timeframe, limit: 700, realtime }),
       ]);
       setCandles(nextCandles);
       setIndicators(nextIndicators);
       setPrediction(null);
+      setSuggestions([]);
       if (nextCandles.length) {
         setSetup(defaultSetup(nextCandles[nextCandles.length - 1], setup.side));
       }
@@ -113,6 +125,7 @@ export default function App() {
         stop_loss: Number(setup.stop_loss),
         take_profit: Number(setup.take_profit),
         horizon_minutes: Number(setup.horizon_minutes),
+        realtime: mode === "live",
       });
       setPrediction(result);
     } catch (err) {
@@ -130,11 +143,70 @@ export default function App() {
   function switchSide(side) {
     setSetup(defaultSetup(lastCandle, side));
     setPrediction(null);
+    setSuggestions([]);
   }
 
   useEffect(() => {
-    loadMarketData();
-  }, [symbol, timeframe]);
+    fetchModelStatus()
+      .then(setModelStatus)
+      .catch((err) => setModelStatus({ loaded: false, error: err.message }));
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "replay") {
+      loadMarketData();
+    }
+  }, [symbol, timeframe, mode]);
+
+  useEffect(() => {
+    if (mode !== "live") return undefined;
+
+    const timer = window.setInterval(() => {
+      loadMarketData();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [mode, symbol, timeframe]);
+
+  async function loadSuggestions() {
+    setSuggesting(true);
+    setError("");
+    try {
+      const result = await fetchSetupSuggestions({
+        symbol,
+        timeframe,
+        side: setup.side,
+        horizonMinutes: Number(setup.horizon_minutes),
+        realtime: mode === "live",
+        maxSuggestions: 6,
+      });
+      setSuggestions(result);
+      if (result[0]) {
+        applySuggestion(result[0]);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  function applySuggestion(suggestion) {
+    setSetup({
+      side: suggestion.side,
+      entry: roundPrice(suggestion.entry),
+      stop_loss: roundPrice(suggestion.stop_loss),
+      take_profit: roundPrice(suggestion.take_profit),
+      horizon_minutes: suggestion.horizon_minutes,
+    });
+    setPrediction({
+      win_probability: suggestion.win_probability,
+      calibrated_confidence: suggestion.calibrated_confidence,
+      risk_reward: suggestion.risk_reward,
+      verdict: suggestion.verdict,
+      model_source: suggestion.model_source,
+      context: {},
+    });
+  }
 
   useEffect(() => {
     if (!chartEl.current || !rsiEl.current) return undefined;
@@ -266,6 +338,10 @@ export default function App() {
         </div>
 
         <div className="toolbar" aria-label="Market controls">
+          <span className={modelStatus?.loaded ? "sourcePill model" : "sourcePill warning"}>
+            {modelStatus?.loaded ? `Model ${modelStatus.model_kind || "loaded"}` : "Model unavailable"}
+          </span>
+          <span className="sourcePill">{mode === "live" ? "CSV realtime sim" : mode === "replay" ? "Replay" : "Historical"}</span>
           <select value={symbol} onChange={(event) => setSymbol(event.target.value)} aria-label="Symbol">
             {SYMBOLS.map((item) => (
               <option key={item} value={item}>
@@ -288,14 +364,19 @@ export default function App() {
           <button className="iconButton" onClick={loadMarketData} type="button" title="Refresh market data">
             <RefreshCw size={17} aria-hidden="true" />
           </button>
-          <button
-            className={`modeButton ${mode === "replay" ? "active" : ""}`}
-            onClick={() => setMode((current) => (current === "replay" ? "static" : "replay"))}
-            type="button"
-          >
-            {mode === "replay" ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
-            {mode === "replay" ? "Replay" : "Static"}
-          </button>
+          <div className="modeGroup" aria-label="Data mode">
+            <button className={mode === "static" ? "active" : ""} onClick={() => setMode("static")} type="button">
+              Static
+            </button>
+            <button className={mode === "live" ? "active" : ""} onClick={() => setMode("live")} type="button">
+              <Activity size={14} aria-hidden="true" />
+              Live
+            </button>
+            <button className={mode === "replay" ? "active" : ""} onClick={() => setMode("replay")} type="button">
+              {mode === "replay" ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+              Replay
+            </button>
+          </div>
         </div>
       </header>
 
@@ -389,7 +470,29 @@ export default function App() {
             <button className="primaryButton" disabled={loading} type="submit">
               {loading ? "Calculating" : "Predict setup"}
             </button>
+            <button className="secondaryButton" disabled={suggesting} onClick={loadSuggestions} type="button">
+              {suggesting ? "Finding limits" : "Suggest limit entry"}
+            </button>
           </form>
+
+          {suggestions.length ? (
+            <section className="suggestionsPanel">
+              <h2>Limit Ideas</h2>
+              {suggestions.map((item, index) => (
+                <button className="suggestionCard" key={`${item.side}-${item.entry}-${item.stop_loss}-${index}`} onClick={() => applySuggestion(item)} type="button">
+                  <div>
+                    <strong>{item.order_type.replace("_", " ")}</strong>
+                    <span>{Math.round(item.win_probability * 100)}% / {item.verdict}</span>
+                  </div>
+                  <div>
+                    <span>E {roundPrice(item.entry)}</span>
+                    <span>SL {roundPrice(item.stop_loss)}</span>
+                    <span>TP {roundPrice(item.take_profit)}</span>
+                  </div>
+                </button>
+              ))}
+            </section>
+          ) : null}
 
           <section className={`result ${prediction?.verdict || ""}`}>
             <div className="resultTop">

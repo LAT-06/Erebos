@@ -23,6 +23,7 @@ class SetupPredictionRequest(BaseModel):
     stop_loss: float = Field(gt=0)
     take_profit: float = Field(gt=0)
     horizon_minutes: int = Field(default=240, ge=1, le=60 * 24 * 30)
+    realtime: bool = False
 
     @field_validator("symbol")
     @classmethod
@@ -46,3 +47,20 @@ class PredictionOut(BaseModel):
     context: dict
     model_source: str
 
+
+class SetupSuggestionOut(BaseModel):
+    symbol: str
+    timeframe: str
+    side: str
+    order_type: Literal["buy_limit", "sell_limit"]
+    entry: float
+    stop_loss: float
+    take_profit: float
+    horizon_minutes: int
+    risk_reward: float
+    win_probability: float
+    calibrated_confidence: float
+    verdict: Literal["avoid", "watch", "valid"]
+    model_source: str
+    distance_to_current: float
+    rationale: str

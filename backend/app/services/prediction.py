@@ -47,14 +47,42 @@ def risk_reward(side: str, entry: float, stop_loss: float, take_profit: float) -
 
 
 @lru_cache(maxsize=1)
-def load_model_bundle() -> dict[str, Any] | None:
+def _load_model_result() -> tuple[dict[str, Any] | None, str | None]:
     if not MODEL_PATH.exists():
-        return None
+        return None, f"Model artifact not found at {MODEL_PATH}"
     try:
         import joblib
-    except ImportError:
-        return None
-    return joblib.load(MODEL_PATH)
+    except ImportError as exc:
+        return None, f"joblib is not installed: {exc}"
+    try:
+        return joblib.load(MODEL_PATH), None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+def load_model_bundle() -> dict[str, Any] | None:
+    return _load_model_result()[0]
+
+
+def clear_model_cache() -> None:
+    _load_model_result.cache_clear()
+
+
+def model_status() -> dict:
+    bundle, error = _load_model_result()
+    metadata = bundle.get("metadata", {}) if bundle else {}
+    feature_columns = bundle.get("feature_columns", []) if bundle else []
+    return {
+        "loaded": bundle is not None,
+        "path": str(MODEL_PATH),
+        "error": error,
+        "feature_count": len(feature_columns),
+        "model_kind": metadata.get("model_kind"),
+        "metrics": metadata.get("metrics"),
+        "trained_rows": metadata.get("trained_rows"),
+        "valid_rows": metadata.get("valid_rows"),
+        "test_rows": metadata.get("test_rows"),
+    }
 
 
 def _model_probability(request: SetupPredictionRequest, candles: list[Candle], zones: list[Zone]) -> float | None:
@@ -298,3 +326,127 @@ def predict_setup(request: SetupPredictionRequest, candles: list[Candle], zones:
         "context": context,
         "model_source": source,
     }
+
+
+def default_horizon_minutes(timeframe: str) -> int:
+    if timeframe == "15m":
+        return 240
+    if timeframe == "1h":
+        return 720
+    minutes = TIMEFRAME_MINUTES.get(timeframe, 15)
+    return max(minutes * 12, minutes)
+
+
+def _unique_prices(values: list[float], tolerance: float) -> list[float]:
+    output: list[float] = []
+    for value in values:
+        if value <= 0:
+            continue
+        if any(abs(value - existing) <= tolerance for existing in output):
+            continue
+        output.append(value)
+    return output
+
+
+def suggest_limit_setups(
+    symbol: str,
+    timeframe: str,
+    side: str | None,
+    horizon_minutes: int | None,
+    candles: list[Candle],
+    zones: list[Zone],
+    max_suggestions: int = 6,
+) -> list[dict]:
+    if len(candles) < 30:
+        raise ValueError("Not enough candles to suggest setups")
+
+    latest = candles[-1]
+    payload = indicator_payload(candles)
+    latest_atr = payload["latest"]["atr"] or max(latest.high - latest.low, latest.close * 0.001)
+    zone_context = nearest_zones(latest.close, zones)
+    support = zone_context.get("nearest_support")
+    resistance = zone_context.get("nearest_resistance")
+    selected_sides = [side] if side in {"long", "short"} else ["long", "short"]
+    horizon = horizon_minutes or default_horizon_minutes(timeframe)
+    suggestions: list[dict] = []
+
+    for selected_side in selected_sides:
+        if selected_side == "long":
+            raw_entries = [
+                latest.close - latest_atr * 0.25,
+                latest.close - latest_atr * 0.5,
+            ]
+            if support:
+                raw_entries.extend([support["price"] + latest_atr * 0.12, support["price"] + latest_atr * 0.35])
+            raw_entries = [min(entry, latest.close - latest_atr * 0.05) for entry in raw_entries]
+            order_type = "buy_limit"
+        else:
+            raw_entries = [
+                latest.close + latest_atr * 0.25,
+                latest.close + latest_atr * 0.5,
+            ]
+            if resistance:
+                raw_entries.extend([resistance["price"] - latest_atr * 0.12, resistance["price"] - latest_atr * 0.35])
+            raw_entries = [max(entry, latest.close + latest_atr * 0.05) for entry in raw_entries]
+            order_type = "sell_limit"
+
+        entries = _unique_prices(raw_entries, latest_atr * 0.12)
+        for entry in entries:
+            for sl_atr, rr in ((0.8, 1.5), (1.0, 2.0), (1.2, 2.5)):
+                risk = latest_atr * sl_atr
+                if selected_side == "long":
+                    stop_loss = entry - risk
+                    take_profit = entry + risk * rr
+                else:
+                    stop_loss = entry + risk
+                    take_profit = entry - risk * rr
+                if stop_loss <= 0 or take_profit <= 0:
+                    continue
+
+                request = SetupPredictionRequest(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    side=selected_side,
+                    entry=entry,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    horizon_minutes=horizon,
+                )
+                prediction = predict_setup(request, candles, zones)
+                probability = prediction["win_probability"]
+                confidence = prediction["calibrated_confidence"]
+                distance = abs(entry - latest.close)
+                rationale = (
+                    f"{order_type.replace('_', ' ')} near "
+                    f"{'support/pullback' if selected_side == 'long' else 'resistance/pullback'}, "
+                    f"{sl_atr:.1f} ATR stop, {rr:.1f}R target"
+                )
+                suggestions.append(
+                    {
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "side": selected_side,
+                        "order_type": order_type,
+                        "entry": round(entry, 2),
+                        "stop_loss": round(stop_loss, 2),
+                        "take_profit": round(take_profit, 2),
+                        "horizon_minutes": horizon,
+                        "risk_reward": round(prediction["risk_reward"], 3),
+                        "win_probability": probability,
+                        "calibrated_confidence": confidence,
+                        "verdict": prediction["verdict"],
+                        "model_source": prediction["model_source"],
+                        "distance_to_current": round(distance, 2),
+                        "rationale": rationale,
+                    }
+                )
+
+    suggestions.sort(
+        key=lambda item: (
+            item["win_probability"],
+            item["calibrated_confidence"],
+            item["risk_reward"],
+        ),
+        reverse=True,
+    )
+    return suggestions[:max_suggestions]
