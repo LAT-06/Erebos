@@ -17,13 +17,13 @@ async function request(path, options = {}) {
   return response.json();
 }
 
-export function fetchCandles({ symbol, timeframe, limit = 700 }) {
-  const params = new URLSearchParams({ symbol, timeframe, limit: String(limit) });
+export function fetchCandles({ symbol, timeframe, limit = 700, realtime = false }) {
+  const params = new URLSearchParams({ symbol, timeframe, limit: String(limit), realtime: String(realtime) });
   return request(`/api/candles?${params.toString()}`);
 }
 
-export function fetchIndicators({ symbol, timeframe, limit = 700 }) {
-  const params = new URLSearchParams({ symbol, timeframe, limit: String(limit) });
+export function fetchIndicators({ symbol, timeframe, limit = 700, realtime = false }) {
+  const params = new URLSearchParams({ symbol, timeframe, limit: String(limit), realtime: String(realtime) });
   return request(`/api/indicators?${params.toString()}`);
 }
 
@@ -34,13 +34,31 @@ export function predictSetup(payload) {
   });
 }
 
-export function replayUrl({ symbol, timeframe, limit = 240, intervalMs = 450 }) {
+export function fetchModelStatus() {
+  return request("/api/model/status");
+}
+
+export function fetchSetupSuggestions({ symbol, timeframe, side, horizonMinutes, realtime = false, maxSuggestions = 6 }) {
+  const params = new URLSearchParams({
+    symbol,
+    timeframe,
+    side,
+    realtime: String(realtime),
+    max_suggestions: String(maxSuggestions),
+  });
+  if (horizonMinutes) {
+    params.set("horizon_minutes", String(horizonMinutes));
+  }
+  return request(`/api/setups/suggest?${params.toString()}`);
+}
+
+export function replayUrl({ symbol, timeframe, limit = 240, intervalMs = 450, realtime = false }) {
   const params = new URLSearchParams({
     symbol,
     timeframe,
     limit: String(limit),
     interval_ms: String(intervalMs),
+    realtime: String(realtime),
   });
   return `${API_BASE}/api/replay/stream?${params.toString()}`;
 }
-

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+from dataclasses import replace
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -11,6 +12,17 @@ from app.config import DATASET_ROOT, DEFAULT_LIMIT, MAX_LIMIT, TIMEFRAME_ALIASES
 
 
 DATE_FORMAT = "%Y.%m.%d %H:%M"
+TIMEFRAME_SECONDS = {
+    "1m": 60,
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "4h": 14400,
+    "1d": 86400,
+    "1w": 604800,
+    "1M": 2592000,
+}
 
 
 @dataclass(frozen=True)
@@ -146,3 +158,18 @@ def get_candles(
     candles = load_candles(symbol, timeframe)
     return filter_candles(candles, parse_datetime(from_value), parse_datetime(to_value), limit)
 
+
+def align_to_timeframe(dt: datetime, timeframe: str) -> datetime:
+    timeframe = normalize_timeframe(timeframe)
+    seconds = TIMEFRAME_SECONDS.get(timeframe, 900)
+    timestamp = int(dt.replace(tzinfo=timezone.utc).timestamp())
+    aligned = timestamp - (timestamp % seconds)
+    return datetime.fromtimestamp(aligned, tz=timezone.utc).replace(tzinfo=None)
+
+
+def shift_candles_to_now(candles: list[Candle], timeframe: str, now: datetime | None = None) -> list[Candle]:
+    if not candles:
+        return []
+    aligned_now = align_to_timeframe(now or datetime.now(), timeframe)
+    delta = aligned_now - candles[-1].dt
+    return [replace(candle, dt=candle.dt + delta) for candle in candles]

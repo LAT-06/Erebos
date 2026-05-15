@@ -48,13 +48,19 @@ Open `notebook/xau/xau_multitimeframe_training.ipynb` on Kaggle, attach the XAU 
 Copy the model artifact into `models/xau_setup_model.joblib`, or set `MODEL_PATH=/path/to/xau_setup_model.joblib` before starting the backend.
 
 Until a trained artifact exists, `/api/predict/setup` uses a transparent heuristic fallback so the platform can be tested end-to-end.
+With `models/xau_setup_model.joblib` present and LightGBM installed, the backend uses the trained model directly.
 
 ## API Surface
 
 - `GET /api/candles?symbol=XAU&timeframe=15m&from=&to=`
 - `GET /api/indicators?symbol=XAU&timeframe=15m`
 - `POST /api/predict/setup`
+- `GET /api/setups/suggest?symbol=XAU&timeframe=15m&side=long`
+- `GET /api/model/status`
+- `POST /api/model/reload`
 - `GET /api/replay/stream`
+
+`realtime=true` shifts the latest CSV window to the current local time so the UI can run in live-simulation mode. It is not a broker/TradingView live feed yet; replace the data adapter when a real XAU provider/API key is chosen.
 
 ## Verification
 

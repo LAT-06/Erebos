@@ -140,6 +140,59 @@ input {
   color: #137255;
 }
 
+.modeGroup {
+  display: flex;
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid #cfc1ad;
+  border-radius: 8px;
+  background: #efe8dc;
+}
+
+.modeGroup button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 68px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #2a2723;
+}
+
+.modeGroup button.active {
+  background: #ffffff;
+  color: #137255;
+  box-shadow: 0 1px 5px rgba(65, 48, 31, 0.12);
+}
+
+.sourcePill {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  border: 1px solid #d8cab7;
+  border-radius: 999px;
+  background: #fffefd;
+  color: #6b6258;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sourcePill.model {
+  border-color: #9ecfbf;
+  background: #edf8f4;
+  color: #137255;
+}
+
+.sourcePill.warning {
+  border-color: #d99c94;
+  background: #fff1ef;
+  color: #9a312b;
+}
+
 .error {
   display: flex;
   align-items: center;
@@ -327,14 +380,64 @@ label input {
   font-weight: 700;
 }
 
-.primaryButton:disabled {
+.secondaryButton {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 8px;
+  border: 1px solid #cfc1ad;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #2f6f63;
+  font-weight: 700;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
   opacity: 0.65;
   cursor: wait;
 }
 
 .result,
-.zonesPanel {
+.zonesPanel,
+.suggestionsPanel {
   padding: 14px;
+}
+
+.suggestionsPanel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dacdbb;
+  border-radius: 8px;
+  background: #fbfaf7;
+  box-shadow: 0 10px 26px rgba(72, 55, 35, 0.07);
+}
+
+.suggestionsPanel h2 {
+  font-size: 15px;
+}
+
+.suggestionCard {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid #eadfce;
+  border-radius: 8px;
+  background: #fffefd;
+  text-align: left;
+}
+
+.suggestionCard > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.suggestionCard span {
+  color: #6f655b;
+  font-size: 12px;
 }
 
 .resultTop {
