@@ -1,6 +1,6 @@
 :root {
-  color: #2a2723;
-  background: #f2eee6;
+  color: #d1d4dc;
+  background: #0b0e11;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,7 +13,7 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: #f2eee6;
+  background: #0b0e11;
 }
 
 button,
@@ -28,30 +28,30 @@ button {
 
 .shell {
   min-height: 100vh;
-  padding: 16px;
+  padding: 12px;
+  background: #0b0e11;
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 14px;
-  border: 1px solid #dacdbb;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid #2a2e39;
   border-radius: 8px;
-  background: #fbfaf7;
-  box-shadow: 0 10px 26px rgba(72, 55, 35, 0.08);
+  background: #131722;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 240px;
 }
 
 .brand svg {
-  color: #b77818;
+  color: #f5c542;
 }
 
 h1,
@@ -61,7 +61,7 @@ p {
 }
 
 .brand h1 {
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.2;
 }
 
@@ -70,8 +70,9 @@ p {
 .resultTop span,
 .metrics span,
 .zoneRow span,
-.rsiTitle span {
-  color: #7b7064;
+.rsiTitle span,
+.suggestionCard span {
+  color: #787b86;
   font-size: 12px;
 }
 
@@ -85,31 +86,32 @@ p {
 
 select,
 input {
-  min-height: 36px;
-  border: 1px solid #cfc1ad;
+  min-height: 34px;
+  border: 1px solid #2a2e39;
   border-radius: 6px;
-  background: #fffefd;
-  color: #2a2723;
+  background: #0f131c;
+  color: #d1d4dc;
   padding: 0 10px;
 }
 
-.segmented {
+.segmented,
+.modeGroup {
   display: flex;
-  min-height: 36px;
+  min-height: 34px;
   padding: 3px;
-  border: 1px solid #cfc1ad;
+  border: 1px solid #2a2e39;
   border-radius: 8px;
-  background: #efe8dc;
+  background: #0f131c;
 }
 
 .segmented button,
 .iconButton,
-.modeButton,
+.modeGroup button,
 .sideToggle button,
 .primaryButton {
   border: 0;
   border-radius: 6px;
-  color: #2a2723;
+  color: #d1d4dc;
 }
 
 .segmented button {
@@ -118,35 +120,21 @@ input {
   background: transparent;
 }
 
-.segmented button.active {
-  background: #ffffff;
-  box-shadow: 0 1px 5px rgba(65, 48, 31, 0.12);
+.segmented button.active,
+.modeGroup button.active {
+  background: #1f2430;
+  color: #ffffff;
 }
 
-.iconButton,
-.modeButton {
-  min-height: 36px;
+.iconButton {
+  min-height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  border: 1px solid #cfc1ad;
-  background: #ffffff;
+  border: 1px solid #2a2e39;
+  background: #0f131c;
   padding: 0 11px;
-}
-
-.modeButton.active {
-  border-color: #1f9d75;
-  color: #137255;
-}
-
-.modeGroup {
-  display: flex;
-  min-height: 36px;
-  padding: 3px;
-  border: 1px solid #cfc1ad;
-  border-radius: 8px;
-  background: #efe8dc;
 }
 
 .modeGroup button {
@@ -155,16 +143,7 @@ input {
   justify-content: center;
   gap: 6px;
   min-width: 68px;
-  border: 0;
-  border-radius: 6px;
   background: transparent;
-  color: #2a2723;
-}
-
-.modeGroup button.active {
-  background: #ffffff;
-  color: #137255;
-  box-shadow: 0 1px 5px rgba(65, 48, 31, 0.12);
 }
 
 .sourcePill {
@@ -173,59 +152,59 @@ input {
   align-items: center;
   justify-content: center;
   padding: 0 9px;
-  border: 1px solid #d8cab7;
+  border: 1px solid #2a2e39;
   border-radius: 999px;
-  background: #fffefd;
-  color: #6b6258;
+  background: #0f131c;
+  color: #a0a3ad;
   font-size: 12px;
   white-space: nowrap;
 }
 
 .sourcePill.model {
-  border-color: #9ecfbf;
-  background: #edf8f4;
-  color: #137255;
+  border-color: rgba(38, 166, 154, 0.6);
+  background: rgba(38, 166, 154, 0.12);
+  color: #26a69a;
 }
 
 .sourcePill.warning {
-  border-color: #d99c94;
-  background: #fff1ef;
-  color: #9a312b;
+  border-color: rgba(239, 83, 80, 0.6);
+  background: rgba(239, 83, 80, 0.12);
+  color: #ef5350;
 }
 
 .error {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 10px;
   padding: 10px 12px;
-  border: 1px solid #d99c94;
+  border: 1px solid rgba(239, 83, 80, 0.55);
   border-radius: 8px;
-  background: #fff1ef;
-  color: #9a312b;
+  background: rgba(239, 83, 80, 0.12);
+  color: #ef9a9a;
 }
 
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 16px;
-  margin-top: 16px;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .chartArea,
 .panel,
 .result,
-.zonesPanel {
-  border: 1px solid #dacdbb;
+.zonesPanel,
+.suggestionsPanel {
+  border: 1px solid #2a2e39;
   border-radius: 8px;
-  background: #fbfaf7;
-  box-shadow: 0 10px 26px rgba(72, 55, 35, 0.07);
+  background: #131722;
 }
 
 .chartArea {
-  min-height: calc(100vh - 126px);
+  min-height: calc(100vh - 104px);
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr) 158px;
+  grid-template-rows: auto minmax(400px, 1fr) 118px;
   overflow: hidden;
 }
 
@@ -234,13 +213,13 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid #e5d9ca;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2e39;
 }
 
 .chartHeader strong {
   display: block;
-  font-size: 18px;
+  font-size: 17px;
 }
 
 .legend {
@@ -264,19 +243,26 @@ input {
 }
 
 .ema25 {
-  color: #d59b23;
+  color: #f5c542;
 }
 
 .ema99 {
-  color: #2d7dd2;
+  color: #2962ff;
 }
 
 .ema200 {
-  color: #6d597a;
+  color: #ab47bc;
 }
 
 .zones {
-  color: #27825f;
+  color: #26a69a;
+}
+
+.chartStack {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: #131722;
 }
 
 .chartCanvas,
@@ -286,19 +272,89 @@ input {
   height: 100%;
 }
 
+.zoneOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.zoneBand {
+  position: absolute;
+  min-height: 5px;
+  border-top: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  border-left: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+}
+
+.zoneBand.resistance {
+  color: rgba(239, 83, 80, 0.75);
+  background: rgba(239, 83, 80, 0.12);
+}
+
+.zoneBand.support {
+  color: rgba(38, 166, 154, 0.75);
+  background: rgba(38, 166, 154, 0.12);
+}
+
+.liquidityCorner {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  width: min(280px, calc(100% - 20px));
+  padding: 9px;
+  border: 1px solid rgba(120, 123, 134, 0.35);
+  border-radius: 8px;
+  background: rgba(19, 23, 34, 0.78);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.cornerTitle {
+  margin-bottom: 6px;
+  color: #d1d4dc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.liqRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 7px;
+  align-items: center;
+  min-height: 22px;
+  color: #a0a3ad;
+  font-size: 11px;
+}
+
+.liqRow strong {
+  color: #d1d4dc;
+  font-size: 11px;
+}
+
+.liqRow em {
+  color: #f5c542;
+  font-size: 11px;
+  font-style: normal;
+}
+
 .rsiPanel {
   display: grid;
-  grid-template-rows: 28px 1fr;
-  border-top: 1px solid #e5d9ca;
+  grid-template-rows: 24px 1fr;
+  border-top: 1px solid #2a2e39;
+  background: #131722;
 }
 
 .rsiTitle {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 0 14px;
+  padding: 0 12px;
   font-size: 12px;
-  color: #5f564d;
+  color: #a0a3ad;
 }
 
 .rsiTitle span {
@@ -312,19 +368,23 @@ input {
   min-width: 0;
 }
 
-.panel {
-  padding: 14px;
+.panel,
+.result,
+.zonesPanel,
+.suggestionsPanel {
+  padding: 12px;
 }
 
 .panelTitle {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .panelTitle h2,
-.zonesPanel h2 {
+.zonesPanel h2,
+.suggestionsPanel h2 {
   font-size: 15px;
 }
 
@@ -336,38 +396,38 @@ input {
 }
 
 .sideToggle button {
-  min-height: 40px;
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  border: 1px solid #cfc1ad;
-  background: #ffffff;
+  border: 1px solid #2a2e39;
+  background: #0f131c;
 }
 
 .sideToggle .long.active {
-  border-color: #1f9d75;
-  background: #e9f7f1;
-  color: #137255;
+  border-color: rgba(38, 166, 154, 0.8);
+  background: rgba(38, 166, 154, 0.14);
+  color: #26a69a;
 }
 
 .sideToggle .short.active {
-  border-color: #c0473d;
-  background: #fff0ee;
-  color: #a03932;
+  border-color: rgba(239, 83, 80, 0.8);
+  background: rgba(239, 83, 80, 0.14);
+  color: #ef5350;
 }
 
 label {
   display: grid;
   gap: 6px;
   margin-top: 10px;
-  color: #5d544c;
+  color: #a0a3ad;
   font-size: 12px;
 }
 
 label input {
   width: 100%;
-  color: #2a2723;
+  color: #d1d4dc;
   font-size: 14px;
 }
 
@@ -375,7 +435,7 @@ label input {
   width: 100%;
   min-height: 40px;
   margin-top: 14px;
-  background: #2f6f63;
+  background: #2962ff;
   color: #ffffff;
   font-weight: 700;
 }
@@ -384,10 +444,10 @@ label input {
   width: 100%;
   min-height: 38px;
   margin-top: 8px;
-  border: 1px solid #cfc1ad;
+  border: 1px solid #2a2e39;
   border-radius: 6px;
-  background: #ffffff;
-  color: #2f6f63;
+  background: #0f131c;
+  color: #d1d4dc;
   font-weight: 700;
 }
 
@@ -397,23 +457,9 @@ label input {
   cursor: wait;
 }
 
-.result,
-.zonesPanel,
-.suggestionsPanel {
-  padding: 14px;
-}
-
 .suggestionsPanel {
   display: grid;
   gap: 8px;
-  border: 1px solid #dacdbb;
-  border-radius: 8px;
-  background: #fbfaf7;
-  box-shadow: 0 10px 26px rgba(72, 55, 35, 0.07);
-}
-
-.suggestionsPanel h2 {
-  font-size: 15px;
 }
 
 .suggestionCard {
@@ -422,9 +468,10 @@ label input {
   width: 100%;
   min-height: 72px;
   padding: 10px;
-  border: 1px solid #eadfce;
+  border: 1px solid #2a2e39;
   border-radius: 8px;
-  background: #fffefd;
+  background: #0f131c;
+  color: #d1d4dc;
   text-align: left;
 }
 
@@ -433,11 +480,6 @@ label input {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-.suggestionCard span {
-  color: #6f655b;
-  font-size: 12px;
 }
 
 .resultTop {
@@ -457,23 +499,23 @@ label input {
   margin: 12px 0;
   overflow: hidden;
   border-radius: 99px;
-  background: #e8dfd2;
+  background: #2a2e39;
 }
 
 .probabilityBar span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: #b77818;
+  background: #f5c542;
   transition: width 180ms ease;
 }
 
 .result.valid .probabilityBar span {
-  background: #1f9d75;
+  background: #26a69a;
 }
 
 .result.avoid .probabilityBar span {
-  background: #c0473d;
+  background: #ef5350;
 }
 
 .metrics {
@@ -488,9 +530,9 @@ label input {
   align-content: center;
   gap: 5px;
   padding: 9px;
-  border: 1px solid #eadfce;
+  border: 1px solid #2a2e39;
   border-radius: 8px;
-  background: #fffefd;
+  background: #0f131c;
 }
 
 .metrics strong {
@@ -508,7 +550,7 @@ label input {
   justify-content: space-between;
   gap: 12px;
   min-height: 36px;
-  border-bottom: 1px solid #eadfce;
+  border-bottom: 1px solid #2a2e39;
 }
 
 .zoneRow:last-child {
@@ -516,7 +558,7 @@ label input {
 }
 
 .zonesPanel p {
-  color: #6f655b;
+  color: #a0a3ad;
   font-size: 13px;
   line-height: 1.45;
 }
@@ -534,7 +576,7 @@ label input {
 
 @media (max-width: 760px) {
   .shell {
-    padding: 10px;
+    padding: 8px;
   }
 
   .topbar {
@@ -546,19 +588,26 @@ label input {
     justify-content: flex-start;
   }
 
-  .segmented {
+  .segmented,
+  .modeGroup {
     width: 100%;
     overflow-x: auto;
   }
 
   .chartArea {
     min-height: 620px;
-    grid-template-rows: auto 430px 150px;
+    grid-template-rows: auto 440px 112px;
   }
 
   .chartHeader {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .liquidityCorner {
+    width: min(260px, calc(100% - 16px));
+    top: 8px;
+    left: 8px;
   }
 
   .sidePanel {

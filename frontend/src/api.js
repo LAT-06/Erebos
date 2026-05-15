@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -17,6 +17,11 @@ async function request(path, options = {}) {
   return response.json();
 }
 
+export function fetchLiveQuote({ symbol }) {
+  const params = new URLSearchParams({ symbol });
+  return request(`/api/live/quote?${params.toString()}`);
+}
+
 export function fetchCandles({ symbol, timeframe, limit = 700, realtime = false }) {
   const params = new URLSearchParams({ symbol, timeframe, limit: String(limit), realtime: String(realtime) });
   return request(`/api/candles?${params.toString()}`);
@@ -25,6 +30,16 @@ export function fetchCandles({ symbol, timeframe, limit = 700, realtime = false 
 export function fetchIndicators({ symbol, timeframe, limit = 700, realtime = false }) {
   const params = new URLSearchParams({ symbol, timeframe, limit: String(limit), realtime: String(realtime) });
   return request(`/api/indicators?${params.toString()}`);
+}
+
+export function fetchZones({ symbol, timeframes, limit = 900, realtime = false }) {
+  const params = new URLSearchParams({
+    symbol,
+    timeframes: timeframes.join(","),
+    limit: String(limit),
+    realtime: String(realtime),
+  });
+  return request(`/api/zones?${params.toString()}`);
 }
 
 export function predictSetup(payload) {
@@ -61,4 +76,13 @@ export function replayUrl({ symbol, timeframe, limit = 240, intervalMs = 450, re
     realtime: String(realtime),
   });
   return `${API_BASE}/api/replay/stream?${params.toString()}`;
+}
+
+export function liveUrl({ symbol, timeframe, intervalMs = 1000 }) {
+  const params = new URLSearchParams({
+    symbol,
+    timeframe,
+    interval_ms: String(intervalMs),
+  });
+  return `${API_BASE}/api/live/stream?${params.toString()}`;
 }

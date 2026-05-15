@@ -24,6 +24,7 @@ class SetupPredictionRequest(BaseModel):
     take_profit: float = Field(gt=0)
     horizon_minutes: int = Field(default=240, ge=1, le=60 * 24 * 30)
     realtime: bool = False
+    anchor_price: float | None = Field(default=None, gt=0)
 
     @field_validator("symbol")
     @classmethod
