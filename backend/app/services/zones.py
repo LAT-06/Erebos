@@ -13,14 +13,28 @@ class Zone:
     strength: int
     first_time: int
     last_time: int
+    width: float = 0.0
+    timeframe: str = ""
+    volume: float = 0.0
+    notional: float = 0.0
+    active: bool = True
 
     def to_api(self) -> dict:
+        bottom = self.price - self.width
+        top = self.price + self.width
         return {
             "kind": self.kind,
+            "timeframe": self.timeframe,
             "price": round(self.price, 4),
+            "top": round(top, 4),
+            "bottom": round(bottom, 4),
             "strength": self.strength,
             "first_time": self.first_time,
             "last_time": self.last_time,
+            "volume": round(self.volume, 2),
+            "notional": round(self.notional, 2),
+            "volume_unit": "csv_volume_estimate",
+            "active": self.active,
         }
 
 
@@ -33,7 +47,7 @@ def _cluster(levels: list[tuple[str, float, int]], tolerance: float) -> list[Zon
                 matched_idx = idx
                 break
         if matched_idx is None:
-            zones.append(Zone(kind=kind, price=price, strength=1, first_time=ts, last_time=ts))
+            zones.append(Zone(kind=kind, price=price, strength=1, first_time=ts, last_time=ts, width=tolerance))
         else:
             zone = zones[matched_idx]
             strength = zone.strength + 1
@@ -44,11 +58,33 @@ def _cluster(levels: list[tuple[str, float, int]], tolerance: float) -> list[Zon
                 strength=strength,
                 first_time=min(zone.first_time, ts),
                 last_time=max(zone.last_time, ts),
+                width=max(zone.width, tolerance),
             )
     return zones
 
 
-def detect_zones(candles: list[Candle], lookback: int = 3, max_zones: int = 18) -> list[Zone]:
+def _estimate_zone_volume(candles: list[Candle], zone: Zone) -> tuple[float, float]:
+    if not candles:
+        return 0.0, 0.0
+    bottom = zone.price - zone.width
+    top = zone.price + zone.width
+    touched = [candle for candle in candles if candle.high >= bottom and candle.low <= top]
+    volume = sum(candle.volume for candle in touched)
+    return volume, volume * zone.price
+
+
+def _is_active_zone(candles: list[Candle], zone: Zone) -> bool:
+    top = zone.price + zone.width
+    bottom = zone.price - zone.width
+    future = [candle for candle in candles if candle.timestamp > zone.last_time]
+    if zone.kind in {"support", "liquidity_low"}:
+        return not any(candle.close < bottom for candle in future)
+    if zone.kind in {"resistance", "liquidity_high"}:
+        return not any(candle.close > top for candle in future)
+    return True
+
+
+def detect_zones(candles: list[Candle], lookback: int = 3, max_zones: int = 18, timeframe: str = "") -> list[Zone]:
     if len(candles) < (lookback * 2) + 1:
         return []
 
@@ -70,6 +106,24 @@ def detect_zones(candles: list[Candle], lookback: int = 3, max_zones: int = 18) 
             levels.append(("liquidity_low", candle.low, candle.timestamp))
 
     zones = _cluster(levels, tolerance)
+    annotated: list[Zone] = []
+    for zone in zones:
+        volume, notional = _estimate_zone_volume(scan, zone)
+        annotated.append(
+            Zone(
+                kind=zone.kind,
+                price=zone.price,
+                strength=zone.strength,
+                first_time=zone.first_time,
+                last_time=zone.last_time,
+                width=zone.width,
+                timeframe=timeframe,
+                volume=volume,
+                notional=notional,
+                active=_is_active_zone(scan, zone),
+            )
+        )
+    zones = annotated
     zones.sort(key=lambda zone: (zone.strength, zone.last_time), reverse=True)
     return zones[:max_zones]
 
@@ -81,9 +135,10 @@ def nearest_zones(price: float, zones: list[Zone]) -> dict:
         "nearest_liquidity": None,
     }
 
-    supports = [zone for zone in zones if zone.kind in {"support", "liquidity_low"} and zone.price <= price]
-    resistances = [zone for zone in zones if zone.kind in {"resistance", "liquidity_high"} and zone.price >= price]
-    liquidity = [zone for zone in zones if zone.kind.startswith("liquidity")]
+    active_zones = [zone for zone in zones if zone.active]
+    supports = [zone for zone in active_zones if zone.kind in {"support", "liquidity_low"} and zone.price <= price]
+    resistances = [zone for zone in active_zones if zone.kind in {"resistance", "liquidity_high"} and zone.price >= price]
+    liquidity = [zone for zone in active_zones if zone.kind.startswith("liquidity")]
 
     if supports:
         zone = min(supports, key=lambda item: abs(item.price - price))
@@ -96,4 +151,3 @@ def nearest_zones(price: float, zones: list[Zone]) -> dict:
         response["nearest_liquidity"] = zone.to_api() | {"distance": round(abs(zone.price - price), 4)}
 
     return response
-

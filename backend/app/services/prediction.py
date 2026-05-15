@@ -7,7 +7,7 @@ from typing import Any
 
 from app.config import MODEL_PATH
 from app.models import SetupPredictionRequest
-from app.services.data_loader import Candle, load_candles
+from app.services.data_loader import Candle, get_candles, realtime_candles
 from app.services.indicators import atr, ema, indicator_payload, rsi
 from app.services.zones import Zone, detect_zones, nearest_zones
 
@@ -214,9 +214,12 @@ def build_runtime_feature_map(request: SetupPredictionRequest, candles: list[Can
         if timeframe == request.timeframe:
             continue
         try:
-            all_context = load_candles(request.symbol, timeframe)
+            context_rows = get_candles(request.symbol, timeframe, limit=1200)
         except (FileNotFoundError, ValueError):
             continue
+        if request.realtime and request.anchor_price:
+            context_rows = realtime_candles(context_rows, timeframe, request.anchor_price)
+        all_context = tuple(context_rows)
         idx = _last_index_at_or_before(all_context, latest_dt)
         if idx is None:
             continue
@@ -356,6 +359,8 @@ def suggest_limit_setups(
     candles: list[Candle],
     zones: list[Zone],
     max_suggestions: int = 6,
+    realtime: bool = False,
+    anchor_price: float | None = None,
 ) -> list[dict]:
     if len(candles) < 30:
         raise ValueError("Not enough candles to suggest setups")
@@ -411,6 +416,8 @@ def suggest_limit_setups(
                     stop_loss=stop_loss,
                     take_profit=take_profit,
                     horizon_minutes=horizon,
+                    realtime=realtime,
+                    anchor_price=anchor_price,
                 )
                 prediction = predict_setup(request, candles, zones)
                 probability = prediction["win_probability"]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from dataclasses import replace
+from collections import deque
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -88,6 +89,42 @@ def dataset_path(symbol: str, timeframe: str) -> Path:
     return DATASET_ROOT / "xau" / TIMEFRAME_FILES[timeframe]
 
 
+def _row_to_candle(symbol: str, timeframe: str, row: dict[str, str]) -> Candle:
+    return Candle(
+        symbol=symbol,
+        timeframe=timeframe,
+        dt=parse_datetime(row["Date"]) or datetime.min,
+        open=float(row["Open"]),
+        high=float(row["High"]),
+        low=float(row["Low"]),
+        close=float(row["Close"]),
+        volume=float(row["Volume"]),
+    )
+
+
+@lru_cache(maxsize=64)
+def load_recent_candles(symbol: str, timeframe: str, limit: int) -> tuple[Candle, ...]:
+    symbol = symbol.upper().strip()
+    timeframe = normalize_timeframe(timeframe)
+    path = dataset_path(symbol, timeframe)
+    if not path.exists():
+        raise FileNotFoundError(f"Missing dataset file: {path}")
+
+    rows: deque[dict[str, str]] = deque(maxlen=max(limit, 1))
+    with path.open("r", newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle, delimiter=";")
+        required = {"Date", "Open", "High", "Low", "Close", "Volume"}
+        missing = required.difference(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"{path.name} is missing columns: {sorted(missing)}")
+        for row in reader:
+            rows.append(row)
+
+    candles = [_row_to_candle(symbol, timeframe, row) for row in rows]
+    candles.sort(key=lambda candle: candle.dt)
+    return tuple(candles)
+
+
 @lru_cache(maxsize=16)
 def load_candles(symbol: str, timeframe: str) -> tuple[Candle, ...]:
     symbol = symbol.upper().strip()
@@ -105,18 +142,7 @@ def load_candles(symbol: str, timeframe: str) -> tuple[Candle, ...]:
             raise ValueError(f"{path.name} is missing columns: {sorted(missing)}")
 
         for row in reader:
-            candles.append(
-                Candle(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    dt=parse_datetime(row["Date"]) or datetime.min,
-                    open=float(row["Open"]),
-                    high=float(row["High"]),
-                    low=float(row["Low"]),
-                    close=float(row["Close"]),
-                    volume=float(row["Volume"]),
-                )
-            )
+            candles.append(_row_to_candle(symbol, timeframe, row))
 
     candles.sort(key=lambda candle: candle.dt)
     deduped: list[Candle] = []
@@ -155,7 +181,10 @@ def get_candles(
     to_value: str | None = None,
     limit: int | None = DEFAULT_LIMIT,
 ) -> list[Candle]:
-    candles = load_candles(symbol, timeframe)
+    if from_value is None and to_value is None and limit is not None:
+        candles = load_recent_candles(symbol, timeframe, min(max(limit, 1), MAX_LIMIT))
+    else:
+        candles = load_candles(symbol, timeframe)
     return filter_candles(candles, parse_datetime(from_value), parse_datetime(to_value), limit)
 
 
@@ -173,3 +202,31 @@ def shift_candles_to_now(candles: list[Candle], timeframe: str, now: datetime | 
     aligned_now = align_to_timeframe(now or datetime.now(), timeframe)
     delta = aligned_now - candles[-1].dt
     return [replace(candle, dt=candle.dt + delta) for candle in candles]
+
+
+def scale_candles_to_anchor(candles: list[Candle], anchor_price: float | None) -> list[Candle]:
+    if not candles or anchor_price is None or anchor_price <= 0:
+        return candles
+    last_close = candles[-1].close
+    if last_close <= 0:
+        return candles
+    factor = anchor_price / last_close
+    return [
+        replace(
+            candle,
+            open=candle.open * factor,
+            high=candle.high * factor,
+            low=candle.low * factor,
+            close=candle.close * factor,
+        )
+        for candle in candles
+    ]
+
+
+def realtime_candles(
+    candles: list[Candle],
+    timeframe: str,
+    anchor_price: float | None = None,
+    now: datetime | None = None,
+) -> list[Candle]:
+    return scale_candles_to_anchor(shift_candles_to_now(candles, timeframe, now), anchor_price)

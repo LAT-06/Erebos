@@ -23,10 +23,26 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
-The API will be available at `http://localhost:8000`.
+The API will be available at `http://localhost:8001`, which matches the frontend default.
+
+## Live XAU Data
+
+The charting library only renders data; it does not include TradingView market data. By default, Live mode uses the free `gold-api.com` XAU quote as a snapshot fallback, so it may update slower than TradingView during fast markets.
+
+For a true streaming feed, configure OANDA before starting the backend:
+
+```bash
+export LIVE_PRICE_PROVIDER=oanda
+export OANDA_ENV=practice
+export OANDA_ACCESS_TOKEN=your_token
+export OANDA_ACCOUNT_ID=your_account_id
+export OANDA_INSTRUMENT_XAU=XAU_USD
+```
+
+Then `/api/live/stream` uses OANDA's streaming pricing endpoint. Without those credentials, the backend cannot legally mirror TradingView's realtime feed.
 
 ## Run The Frontend
 
@@ -59,8 +75,11 @@ With `models/xau_setup_model.joblib` present and LightGBM installed, the backend
 - `GET /api/model/status`
 - `POST /api/model/reload`
 - `GET /api/replay/stream`
+- `GET /api/live/quote`
+- `GET /api/live/status`
+- `GET /api/live/stream`
 
-`realtime=true` shifts the latest CSV window to the current local time so the UI can run in live-simulation mode. It is not a broker/TradingView live feed yet; replace the data adapter when a real XAU provider/API key is chosen.
+`realtime=true` shifts the latest CSV window to the current local time and scales it to the active live quote. `gold-api.com` is a snapshot fallback; OANDA is the streaming adapter when configured.
 
 ## Verification
 

@@ -14,14 +14,18 @@ import {
 import {
   fetchCandles,
   fetchIndicators,
+  fetchLiveQuote,
   fetchModelStatus,
   fetchSetupSuggestions,
+  fetchZones,
+  liveUrl,
   predictSetup,
   replayUrl,
 } from "./api.js";
 
 const TIMEFRAMES = ["5m", "15m", "30m", "1h", "4h", "1d"];
 const SYMBOLS = ["XAU"];
+const PRICE_AXIS_HITBOX = 76;
 
 function roundPrice(value) {
   if (!Number.isFinite(value)) return "";
@@ -54,10 +58,29 @@ function verdictLabel(verdict) {
   return "Avoid";
 }
 
+function formatCompact(value) {
+  if (!Number.isFinite(value)) return "--";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(1)}T`;
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return value.toFixed(0);
+}
+
+function isResistanceZone(zone) {
+  return zone.kind.includes("resistance") || zone.kind.includes("high");
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 export default function App() {
   const [symbol, setSymbol] = useState("XAU");
   const [timeframe, setTimeframe] = useState("15m");
   const [mode, setMode] = useState("static");
+  const [liveQuote, setLiveQuote] = useState(null);
   const [candles, setCandles] = useState([]);
   const [indicators, setIndicators] = useState({ emas: {}, rsi: [], zones: [], latest: {} });
   const [setup, setSetup] = useState(defaultSetup(null));
@@ -67,13 +90,35 @@ export default function App() {
   const [suggesting, setSuggesting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [zoneRects, setZoneRects] = useState([]);
 
   const chartEl = useRef(null);
   const rsiEl = useRef(null);
   const chartState = useRef(null);
-  const priceLines = useRef([]);
+  const fitNextDataRef = useRef(true);
+  const liveIncrementalRef = useRef(false);
+  const priceScaleMarginRef = useRef(0.12);
+  const latestRefs = useRef({ zones: [], lastCandle: null, indicators: {}, timeframe: "15m" });
 
   const lastCandle = candles[candles.length - 1];
+  const zones = indicators.zones || [];
+  const liquidityStats = useMemo(
+    () =>
+      zones
+        .filter((zone) => zone.kind.includes("liquidity"))
+        .filter((zone) => !zone.timeframe || zone.timeframe === timeframe)
+        .filter((zone) => zone.active !== false)
+        .sort((a, b) => (b.volume || 0) - (a.volume || 0))
+        .slice(0, 5),
+    [zones, timeframe],
+  );
+
+  latestRefs.current = {
+    zones,
+    lastCandle,
+    indicators,
+    timeframe,
+  };
 
   const candleData = useMemo(
     () =>
@@ -94,17 +139,26 @@ export default function App() {
     setError("");
     try {
       const realtime = mode === "live";
-      const [nextCandles, nextIndicators] = await Promise.all([
+      const [nextCandles, nextIndicators, nextQuote] = await Promise.all([
         fetchCandles({ symbol, timeframe, limit: 700, realtime }),
         fetchIndicators({ symbol, timeframe, limit: 700, realtime }),
+        realtime ? fetchLiveQuote({ symbol }) : Promise.resolve(null),
       ]);
+      fitNextDataRef.current = true;
       setCandles(nextCandles);
-      setIndicators(nextIndicators);
+      setIndicators({ ...nextIndicators, zones: nextIndicators.zones || [] });
+      setLiveQuote(nextQuote || nextIndicators.live_quote || null);
       setPrediction(null);
       setSuggestions([]);
       if (nextCandles.length) {
         setSetup(defaultSetup(nextCandles[nextCandles.length - 1], setup.side));
       }
+      fetchZones({ symbol, timeframes: [timeframe], limit: 360, realtime })
+        .then((nextZones) => {
+          setIndicators((current) => ({ ...current, zones: nextZones.zones || [] }));
+          setLiveQuote((current) => nextZones.live_quote || current);
+        })
+        .catch((err) => setError(err.message));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -161,10 +215,44 @@ export default function App() {
   useEffect(() => {
     if (mode !== "live") return undefined;
 
-    const timer = window.setInterval(() => {
-      loadMarketData();
-    }, 15000);
-    return () => window.clearInterval(timer);
+    const source = new EventSource(liveUrl({ symbol, timeframe, intervalMs: 1000 }));
+    source.onmessage = (event) => {
+      const candle = JSON.parse(event.data);
+      if (candle.quote) {
+        setLiveQuote(candle.quote);
+      }
+      chartState.current?.candleSeries.update({
+        time: candle.time,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      });
+      liveIncrementalRef.current = true;
+      setCandles((current) => {
+        const withoutDuplicate = current.filter((item) => item.time !== candle.time);
+        return [...withoutDuplicate, candle].sort((a, b) => a.time - b.time).slice(-700);
+      });
+    };
+    source.onerror = () => source.close();
+
+    const contextTimer = window.setInterval(async () => {
+      try {
+        const [nextIndicators, nextZones] = await Promise.all([
+          fetchIndicators({ symbol, timeframe, limit: 700, realtime: true }),
+          fetchZones({ symbol, timeframes: [timeframe], limit: 360, realtime: true }),
+        ]);
+        setIndicators({ ...nextIndicators, zones: nextZones.zones || [] });
+        setLiveQuote(nextIndicators.live_quote || nextZones.live_quote || null);
+      } catch (err) {
+        setError(err.message);
+      }
+    }, 30000);
+
+    return () => {
+      source.close();
+      window.clearInterval(contextTimer);
+    };
   }, [mode, symbol, timeframe]);
 
   async function loadSuggestions() {
@@ -208,6 +296,56 @@ export default function App() {
     });
   }
 
+  function recalculateZoneRects() {
+    const state = chartState.current;
+    const { zones: currentZones, lastCandle: currentLastCandle, indicators: currentIndicators, timeframe: currentTimeframe } =
+      latestRefs.current;
+    if (!state || !chartEl.current || !currentLastCandle) {
+      setZoneRects([]);
+      return;
+    }
+
+    const plotWidth = chartEl.current.clientWidth - PRICE_AXIS_HITBOX;
+    const atr = currentIndicators.latest?.atr || Math.max(currentLastCandle.close * 0.01, 1);
+    const visibleRange = Math.max(atr * 14, currentLastCandle.close * 0.06);
+    const currentX = state.chart.timeScale().timeToCoordinate(currentLastCandle.time);
+    const selectedZones = currentZones
+      .filter((zone) => zone.kind === "support" || zone.kind === "resistance")
+      .filter((zone) => !zone.timeframe || zone.timeframe === currentTimeframe)
+      .filter((zone) => zone.active !== false)
+      .filter((zone) => Math.abs(zone.price - currentLastCandle.close) <= visibleRange)
+      .sort((a, b) => {
+        return (b.strength || 0) - (a.strength || 0);
+      })
+      .slice(0, 10);
+
+    const nextRects = selectedZones
+      .map((zone, index) => {
+        const topPrice = zone.top || zone.price;
+        const bottomPrice = zone.bottom || zone.price;
+        const yTop = state.candleSeries.priceToCoordinate(topPrice);
+        const yBottom = state.candleSeries.priceToCoordinate(bottomPrice);
+        const xStart = state.chart.timeScale().timeToCoordinate(zone.last_time || zone.first_time);
+        const xEnd = currentX === null ? null : Math.min(plotWidth, currentX + 24);
+        if (yTop === null || yBottom === null || xStart === null || xEnd === null) return null;
+        const top = Math.min(yTop, yBottom);
+        const height = Math.max(Math.abs(yBottom - yTop), 5);
+        const left = clamp(Math.min(xStart, xEnd), 0, plotWidth);
+        const width = Math.max(Math.abs(xEnd - left), 8);
+        return {
+          id: `${zone.timeframe}-${zone.kind}-${zone.price}-${index}`,
+          kind: zone.kind,
+          left,
+          width,
+          top,
+          height,
+        };
+      })
+      .filter(Boolean);
+
+    setZoneRects(nextRects);
+  }
+
   useEffect(() => {
     if (!chartEl.current || !rsiEl.current) return undefined;
 
@@ -215,16 +353,16 @@ export default function App() {
       width: chartEl.current.clientWidth,
       height: chartEl.current.clientHeight,
       layout: {
-        background: { color: "#f8f5ef" },
-        textColor: "#2a2723",
+        background: { color: "#131722" },
+        textColor: "#d1d4dc",
         fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
       },
       grid: {
-        vertLines: { color: "#e8dfd2" },
-        horzLines: { color: "#e8dfd2" },
+        vertLines: { color: "#1f2430" },
+        horzLines: { color: "#1f2430" },
       },
-      rightPriceScale: { borderColor: "#cdbfabe6" },
-      timeScale: { borderColor: "#cdbfabe6", timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: "#2a2e39" },
+      timeScale: { borderColor: "#2a2e39", timeVisible: true, secondsVisible: false },
       crosshair: { mode: CrosshairMode.Normal },
     });
 
@@ -232,16 +370,16 @@ export default function App() {
       width: rsiEl.current.clientWidth,
       height: rsiEl.current.clientHeight,
       layout: {
-        background: { color: "#fbfaf7" },
-        textColor: "#403a33",
+        background: { color: "#131722" },
+        textColor: "#787b86",
         fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
       },
       grid: {
-        vertLines: { color: "#eee7dc" },
-        horzLines: { color: "#eee7dc" },
+        vertLines: { color: "#1f2430" },
+        horzLines: { color: "#1f2430" },
       },
-      rightPriceScale: { borderColor: "#d7caba", scaleMargins: { top: 0.16, bottom: 0.18 } },
-      timeScale: { borderColor: "#d7caba", timeVisible: true, secondsVisible: false },
+      rightPriceScale: { visible: false, borderColor: "#2a2e39", scaleMargins: { top: 0.16, bottom: 0.18 } },
+      timeScale: { visible: false, borderColor: "#2a2e39", timeVisible: false, secondsVisible: false },
     });
 
     const candleSeries = chart.addCandlestickSeries({
@@ -253,25 +391,48 @@ export default function App() {
       wickDownColor: "#c0473d",
     });
     const ema25 = chart.addLineSeries({ color: "#d59b23", lineWidth: 2, title: "EMA 25" });
-    const ema99 = chart.addLineSeries({ color: "#2d7dd2", lineWidth: 2, title: "EMA 99" });
-    const ema200 = chart.addLineSeries({ color: "#6d597a", lineWidth: 2, title: "EMA 200" });
-    const rsiSeries = rsiChart.addLineSeries({ color: "#4f6f52", lineWidth: 2, title: "RSI 14" });
-    const rsi70 = rsiChart.addLineSeries({ color: "#c0473d", lineWidth: 1, lineStyle: LineStyle.Dashed });
-    const rsi30 = rsiChart.addLineSeries({ color: "#1f9d75", lineWidth: 1, lineStyle: LineStyle.Dashed });
+    const ema99 = chart.addLineSeries({ color: "#2962ff", lineWidth: 2, title: "EMA 99" });
+    const ema200 = chart.addLineSeries({ color: "#ab47bc", lineWidth: 2, title: "EMA 200" });
+    const rsiSeries = rsiChart.addLineSeries({ color: "#7e57c2", lineWidth: 2, title: "RSI 14" });
+    const rsi70 = rsiChart.addLineSeries({ color: "rgba(239,83,80,0.45)", lineWidth: 1, lineStyle: LineStyle.Dashed });
+    const rsi30 = rsiChart.addLineSeries({ color: "rgba(38,166,154,0.45)", lineWidth: 1, lineStyle: LineStyle.Dashed });
 
     chartState.current = { chart, rsiChart, candleSeries, ema25, ema99, ema200, rsiSeries, rsi70, rsi30 };
+
+    const syncZones = () => window.requestAnimationFrame(recalculateZoneRects);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(syncZones);
+
+    const wheelPriceScale = (event) => {
+      if (!chartEl.current) return;
+      const rect = chartEl.current.getBoundingClientRect();
+      const inPriceScale = event.clientX >= rect.right - PRICE_AXIS_HITBOX;
+      if (!inPriceScale) return;
+      event.preventDefault();
+      const nextMargin = clamp(priceScaleMarginRef.current + (event.deltaY > 0 ? 0.025 : -0.025), 0.02, 0.32);
+      priceScaleMarginRef.current = nextMargin;
+      chart.priceScale("right").applyOptions({
+        scaleMargins: {
+          top: nextMargin,
+          bottom: nextMargin,
+        },
+      });
+      syncZones();
+    };
+    chartEl.current.addEventListener("wheel", wheelPriceScale, { passive: false });
 
     const resize = () => {
       if (!chartEl.current || !rsiEl.current) return;
       chart.applyOptions({ width: chartEl.current.clientWidth, height: chartEl.current.clientHeight });
       rsiChart.applyOptions({ width: rsiEl.current.clientWidth, height: rsiEl.current.clientHeight });
+      syncZones();
     };
-    const observer = new ResizeObserver(resize);
-    observer.observe(chartEl.current);
-    observer.observe(rsiEl.current);
+    window.addEventListener("resize", resize);
+    window.requestAnimationFrame(resize);
 
     return () => {
-      observer.disconnect();
+      window.removeEventListener("resize", resize);
+      chartEl.current?.removeEventListener("wheel", wheelPriceScale);
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(syncZones);
       chart.remove();
       rsiChart.remove();
       chartState.current = null;
@@ -282,33 +443,38 @@ export default function App() {
     const state = chartState.current;
     if (!state) return;
 
+    if (liveIncrementalRef.current) {
+      liveIncrementalRef.current = false;
+      window.requestAnimationFrame(recalculateZoneRects);
+      return;
+    }
+
     state.candleSeries.setData(candleData);
+    if (fitNextDataRef.current && candleData.length) {
+      state.chart.timeScale().fitContent();
+      state.rsiChart.timeScale().fitContent();
+      fitNextDataRef.current = false;
+    }
+    window.requestAnimationFrame(recalculateZoneRects);
+  }, [candleData]);
+
+  useEffect(() => {
+    const state = chartState.current;
+    if (!state) return;
+
     state.ema25.setData(indicators.emas?.ema_25 || []);
     state.ema99.setData(indicators.emas?.ema_99 || []);
     state.ema200.setData(indicators.emas?.ema_200 || []);
     state.rsiSeries.setData(indicators.rsi || []);
     state.rsi70.setData(candleData.map((item) => ({ time: item.time, value: 70 })));
     state.rsi30.setData(candleData.map((item) => ({ time: item.time, value: 30 })));
-
-    priceLines.current.forEach((line) => state.candleSeries.removePriceLine(line));
-    priceLines.current = (indicators.zones || []).slice(0, 12).map((zone) =>
-      state.candleSeries.createPriceLine({
-        price: zone.price,
-        color: zone.kind.includes("resistance") || zone.kind.includes("high") ? "#b5483e" : "#27825f",
-        lineWidth: Math.min(3, Math.max(1, zone.strength)),
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: zone.kind.replace("_", " "),
-      }),
-    );
-
-    state.chart.timeScale().fitContent();
-    state.rsiChart.timeScale().fitContent();
+    window.requestAnimationFrame(recalculateZoneRects);
   }, [candleData, indicators]);
 
   useEffect(() => {
     if (mode !== "replay") return undefined;
 
+    fitNextDataRef.current = true;
     setCandles([]);
     chartState.current?.candleSeries.setData([]);
     const source = new EventSource(replayUrl({ symbol, timeframe, limit: 240, intervalMs: 450 }));
@@ -341,7 +507,11 @@ export default function App() {
           <span className={modelStatus?.loaded ? "sourcePill model" : "sourcePill warning"}>
             {modelStatus?.loaded ? `Model ${modelStatus.model_kind || "loaded"}` : "Model unavailable"}
           </span>
-          <span className="sourcePill">{mode === "live" ? "CSV realtime sim" : mode === "replay" ? "Replay" : "Historical"}</span>
+          <span className="sourcePill">
+            {mode === "live"
+              ? `Live ${liveQuote?.feed_type === "streaming" ? "Stream" : "Snapshot"} ${liveQuote?.provider || "market"} ${roundPrice(liveQuote?.price || lastCandle?.close)}`
+              : mode === "replay" ? "Replay" : "Historical"}
+          </span>
           <select value={symbol} onChange={(event) => setSymbol(event.target.value)} aria-label="Symbol">
             {SYMBOLS.map((item) => (
               <option key={item} value={item}>
@@ -392,16 +562,43 @@ export default function App() {
           <div className="chartHeader">
             <div>
               <strong>{symbol}</strong>
-              <span>{timeframe} candles</span>
+              <span>{timeframe} candles / {timeframe} zones only</span>
             </div>
             <div className="legend">
               <span className="ema25">EMA 25</span>
               <span className="ema99">EMA 99</span>
               <span className="ema200">EMA 200</span>
-              <span className="zones">Zones</span>
+              <span className="zones">Zones {zones.length}</span>
             </div>
           </div>
-          <div className="chartCanvas" ref={chartEl} />
+          <div className="chartStack">
+            <div className="chartCanvas" ref={chartEl} />
+            <div className="zoneOverlay" aria-hidden="true">
+              {zoneRects.map((zone) => (
+                <div
+                  className={`zoneBand ${isResistanceZone(zone) ? "resistance" : "support"}`}
+                  key={zone.id}
+                  style={{ left: `${zone.left}px`, top: `${zone.top}px`, width: `${zone.width}px`, height: `${zone.height}px` }}
+                />
+              ))}
+            </div>
+            <div className="liquidityCorner">
+              <div className="cornerTitle">Liquidity map · {timeframe}</div>
+              {liquidityStats.length ? (
+                liquidityStats.map((zone) => (
+                  <div className="liqRow" key={`${zone.timeframe}-${zone.kind}-${zone.price}`}>
+                    <span>{zone.timeframe} {zone.kind.replace("liquidity_", "")}</span>
+                    <strong>{roundPrice(zone.price)}</strong>
+                    <em>{formatCompact(zone.volume)} vol</em>
+                  </div>
+                ))
+              ) : (
+                <div className="liqRow">
+                  <span>No zone volume</span>
+                </div>
+              )}
+            </div>
+          </div>
           <div className="rsiPanel">
             <div className="rsiTitle">
               <Activity size={14} aria-hidden="true" />
@@ -537,7 +734,10 @@ export default function App() {
                 );
               })
             ) : (
-              <p>{(indicators.zones || []).length} zones detected on the current window.</p>
+              <p>
+                {(indicators.zones || []).filter((zone) => !zone.timeframe || zone.timeframe === timeframe).length} {timeframe} zones
+                detected on the current window.
+              </p>
             )}
           </section>
         </aside>
